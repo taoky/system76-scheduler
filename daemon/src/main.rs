@@ -22,13 +22,13 @@ use clap::ArgMatches;
 use dbus::{CpuMode, Server};
 use std::{collections::HashMap, path::Path, time::Duration};
 use tokio::sync::mpsc::Sender;
-use upower_dbus::UPowerProxy;
+use upower_dbus::{UPowerProxy, DeviceProxy, BatteryState};
 use zbus::{Connection, PropertyStream};
 
 #[derive(Debug)]
 enum Event {
     ExecCreate(execsnoop::Process),
-    OnBattery(bool),
+    OnBattery(BatteryState),
     ReloadConfiguration,
     SetCpuMode,
     SetCustomCpuMode,
@@ -109,6 +109,8 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
     let paths = SchedPaths::new()?;
 
     let upower_proxy = UPowerProxy::new(&connection).await?;
+    let display_device = upower_proxy.get_display_device().await?;
+    let device_proxy = DeviceProxy::builder(&connection).path(display_device)?.build().await?;
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
 
@@ -128,7 +130,7 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
 
     // Spawns an async task that watches for battery status notifications.
     tokio::spawn(battery_monitor(
-        upower_proxy.receive_on_battery_changed().await,
+        device_proxy.receive_state_changed().await,
         tx.clone(),
     ));
 
@@ -148,10 +150,10 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
         });
     }
 
-    let apply_config = |on_battery: bool| {
+    let apply_config = |battery_state: BatteryState| {
         cpu::tweak(
             &paths,
-            &if on_battery {
+            &if battery_state == BatteryState::Discharging {
                 tracing::debug!("auto config applying default config");
                 CpuConfig::default_config()
             } else {
@@ -161,7 +163,7 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
         );
     };
 
-    apply_config(upower_proxy.on_battery().await.unwrap_or(false));
+    apply_config(device_proxy.state().await.unwrap_or(BatteryState::Unknown));
 
     let mut priority_service = priority::Service::default();
     priority_service.reload_configuration();
@@ -206,7 +208,7 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
             Event::SetCpuMode => match interface.cpu_mode {
                 CpuMode::Auto => {
                     tracing::debug!("applying auto config");
-                    apply_config(upower_proxy.on_battery().await.unwrap_or(false));
+                    apply_config(device_proxy.state().await.unwrap_or(BatteryState::Unknown));
                 }
 
                 CpuMode::Default => {
@@ -237,11 +239,11 @@ async fn daemon(connection: Connection, args: &ArgMatches) -> anyhow::Result<()>
     Ok(())
 }
 
-async fn battery_monitor(mut events: PropertyStream<'_, bool>, tx: Sender<Event>) {
+async fn battery_monitor(mut events: PropertyStream<'_, BatteryState>, tx: Sender<Event>) {
     use futures::StreamExt;
     while let Some(event) = events.next().await {
-        if let Ok(on_battery) = event.get().await {
-            let _res = tx.send(Event::OnBattery(on_battery)).await;
+        if let Ok(battery_state) = event.get().await {
+            let _res = tx.send(Event::OnBattery(battery_state)).await;
         }
     }
 }
