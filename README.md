@@ -1,5 +1,39 @@
 # System76 Scheduler
 
+## Changes compared to original version
+
+1. On my laptop, upower still shows `on-battery = false` when the battery is actually discharing:
+
+    ```
+    Device: /org/freedesktop/UPower/devices/DisplayDevice
+      power supply:         yes
+      updated:              Wed 14 Sep 2022 01:21:38 AM CST (25 seconds ago)
+      has history:          no
+      has statistics:       no
+      battery
+          present:             yes
+          state:               discharging
+          warning-level:       none
+          energy:              37.44 Wh
+          energy-full:         51.18 Wh
+          energy-rate:         13.594 W
+          charge-cycles:       N/A
+          time to empty:       2.8 hours
+          percentage:          73%
+          icon-name:          'battery-full-symbolic'
+
+    Daemon:
+      daemon-version:  0.99.20
+      on-battery:      no
+      lid-is-closed:   no
+      lid-is-present:  yes
+      critical-action: HybridSleep
+    ```
+
+    In this modified version state of DisplayDevice is used instead. When `state == Discharing` s76-scheduler will consider it as on battery and use default profile for CFS.
+
+---
+
 Scheduling service which optimizes Linux's CPU scheduler and automatically assigns process priorities for improved desktop responsiveness. Low latency CPU scheduling will be activated automatically when on AC, and the default scheduling latencies set on battery. Processes are regularly sweeped and assigned process priorities based on configuration files. When combined with [pop-shell](https://github.com/pop-os/shell/), foreground processes and their sub-processes will be given higher process priority.
 
 These changes result in a noticeable improvement in the experienced smoothness and performance of applications and games. The improved responsiveness of applications is most noticeable on older systems with budget hardware, whereas games will benefit from higher framerates and reduced jitter. This is because background applications and services will be given a smaller portion of leftover CPU budget after the active process has had the most time on the CPU.

@@ -10,3 +10,6 @@ debian/*
 target
 vendor
 vendor.tar
+
+*.zst
+pkg/

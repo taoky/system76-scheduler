@@ -3,7 +3,7 @@
 
 _pkgname=system76-scheduler
 pkgname=${_pkgname}
-pkgver=VERSION
+pkgver=r99.4a31ed8
 pkgrel=1
 pkgdesc='system76 userspace scheduler, forked to workaround some bugs'
 arch=(x86_64)
@@ -20,7 +20,7 @@ backup=(
 
 pkgver() {
 #   cd "$pkgname"
-  git describe --long | sed 's/\([^-]*-g\)/r\1/;s/-/./g'
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {
