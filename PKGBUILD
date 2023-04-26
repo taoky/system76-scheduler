@@ -3,7 +3,7 @@
 
 _pkgname=system76-scheduler
 pkgname=${_pkgname}-taoky
-pkgver=r119.9560779
+pkgver=r120.0f83520
 pkgrel=1
 pkgdesc='system76 userspace scheduler, forked to workaround some bugs'
 arch=(x86_64)

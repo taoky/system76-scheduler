@@ -56,6 +56,7 @@ process-scheduler enable=true {
             include cgroup="/user.slice/*.service" parent="systemd"
             include cgroup="/user.slice/*/session.slice/*" parent="systemd"
             exclude cgroup="/user.slice/*app-dbus*"
+            exclude cgroup="/user.slice/*/session.slice/dbus.service"
         }
 
         // System services belonging to root

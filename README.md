@@ -50,6 +50,7 @@
 
     So this change should make sense, though may not suitable for all laptops. And also notice that it will NOT turn to discharing state immediately after unplugging: wait for a few seconds to see it.
 2. Update rust-toolchain version to 1.69.0: my local env uses sparse registry and only latest toolchain supports this.
+3. Add "/user.slice/*/session.slice/dbus.service" to session service exclusion, as some GNOME graphical apps (e.g. nautilus, eog) are started in this service.
 ---
 
 Scheduling service which optimizes Linux's CPU scheduler and automatically assigns process priorities for improved desktop responsiveness. Low latency CPU scheduling will be activated automatically when on AC, and the default scheduling latencies set on battery. Processes are regularly sweeped and assigned process priorities based on configuration files. When combined with [pop-shell](https://github.com/pop-os/shell/), foreground processes and their sub-processes will be given higher process priority.
