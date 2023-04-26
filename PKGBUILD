@@ -3,14 +3,14 @@
 
 _pkgname=system76-scheduler
 pkgname=${_pkgname}-taoky
-pkgver=r101.0a87b92
+pkgver=r116.a5fec37
 pkgrel=1
 pkgdesc='system76 userspace scheduler, forked to workaround some bugs'
 arch=(x86_64)
 url='https://github.com/taoky/system76-scheduler'
 license=('MPL-2')
 depends=(bcc-tools python-bcc)
-makedepends=(git rust just linux-headers)
+makedepends=(git rust just linux-headers pipewire)
 provides=(${_pkgname})
 conflicts=(${_pkgname})
 # source=(".")
@@ -28,10 +28,10 @@ pkgver() {
 build() {
 #   cd ${_pkgname}-${pkgver}
   export EXECSNOOP_PATH=/usr/share/bcc/tools/execsnoop
-  just all
+  just execsnoop=/usr/share/bcc/tools/execsnoop build-release
 }
 
 package() {
 #   cd ${_pkgname}-${pkgver}
-  just rootdir=${pkgdir} install
+  just sysconfdir=/usr/share rootdir=${pkgdir} install
 }
