@@ -11,6 +11,12 @@ use bytelines::ByteLines;
 use std::io::{self, BufReader};
 use std::process::{Command, Stdio};
 
+/// Path to the execsnoop bpfcc binary.
+pub const EXECSNOOP_PATH: &str = std::env!(
+    "EXECSNOOP_PATH",
+    "must set EXECSNOOP_PATH env to execsnoop-bpfcc path"
+);
+
 /// Process info
 #[derive(Clone, Debug)]
 pub struct Process<'a> {
@@ -58,6 +64,11 @@ impl ProcessIterator {
                         parent_pid,
                     });
                 }
+            } else {
+                tracing::error!(
+                    "failed to parse execsnoop output: {:?}",
+                    String::from_utf8_lossy(line)
+                );
             }
         }
 
@@ -78,29 +89,27 @@ impl Drop for ProcessIterator {
 ///
 /// Requires the `execsnoop-bpfcc` binary from `bpfcc-tools`
 pub fn watch() -> io::Result<ProcessIterator> {
-    Command::new(std::env!(
-        "EXECSNOOP_PATH",
-        "must set EXECSNOOP_PATH env to execsnoop-bpfcc path"
-    ))
-    .env("LC_ALL", "C")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::null())
-    .stdin(Stdio::null())
-    .spawn()
-    .and_then(move |mut child| {
-        let stdout = child.stdout.take().ok_or_else(|| {
-            let _res = child.kill();
-            let _res = child.wait();
-            io::Error::new(io::ErrorKind::Other, "execsnoop-bpfcc lacks stdout pipe")
-        })?;
+    Command::new(EXECSNOOP_PATH)
+        .env("LC_ALL", "C")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .spawn()
+        .and_then(move |mut child| {
+            let stdout = child.stdout.take().ok_or_else(|| {
+                let _res = child.kill();
+                let _res = child.wait();
+                io::Error::new(io::ErrorKind::Other, "execsnoop-bpfcc lacks stdout pipe")
+            })?;
 
-        let stream = ByteLines::new(BufReader::with_capacity(16 * 1024, stdout));
+            tracing::debug!("spawned execsnoop");
+            let stream = ByteLines::new(BufReader::with_capacity(16 * 1024, stdout));
 
-        Ok(ProcessIterator {
-            child,
-            stream,
-            name_buffer: Vec::with_capacity(64),
-            cmd_buffer: Vec::with_capacity(128),
+            Ok(ProcessIterator {
+                child,
+                stream,
+                name_buffer: Vec::with_capacity(64),
+                cmd_buffer: Vec::with_capacity(128),
+            })
         })
-    })
 }

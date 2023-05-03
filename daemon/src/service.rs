@@ -12,24 +12,32 @@ use system76_scheduler_config::scheduler::Condition;
 
 pub struct Service<'owner> {
     pub config: crate::config::Config,
-    cfs_paths: SchedPaths,
+    assign_scan: Vec<u32>,
+    assign_scanned: Vec<u32>,
+    assign_tasks: Vec<u32>,
+    cfs_paths: Option<SchedPaths>,
     foreground_processes: Vec<u32>,
     foreground: Option<u32>,
+    gc_counter: usize,
+    owner: LCellOwner<'owner>,
     pipewire_processes: Vec<u32>,
     process_map: process::Map<'owner>,
-    owner: LCellOwner<'owner>,
 }
 
 impl<'owner> Service<'owner> {
-    pub fn new(owner: LCellOwner<'owner>, cfs_paths: SchedPaths) -> Self {
+    pub fn new(owner: LCellOwner<'owner>) -> Self {
         Self {
+            assign_scan: Vec::with_capacity(16),
+            assign_scanned: Vec::with_capacity(16),
+            assign_tasks: Vec::with_capacity(16),
+            cfs_paths: SchedPaths::new().ok(),
             config: crate::config::Config::default(),
-            cfs_paths,
+            foreground_processes: Vec::with_capacity(256),
             foreground: None,
-            foreground_processes: Vec::with_capacity(128),
+            gc_counter: 0,
+            owner,
             pipewire_processes: Vec::with_capacity(4),
             process_map: process::Map::default(),
-            owner,
         }
     }
 
@@ -144,8 +152,15 @@ impl<'owner> Service<'owner> {
     /// Assigns children of a process in case they've not been assigned.
     pub fn assign_children(&mut self, buffer: &mut Buffer, pid: u32) {
         let mut tasks = Vec::new();
-        let mut scan = vec![pid];
+        let mut scan = Vec::new();
         let mut scanned = Vec::new();
+
+        std::mem::swap(&mut tasks, &mut self.assign_tasks);
+        std::mem::swap(&mut scan, &mut self.assign_scan);
+        std::mem::swap(&mut scanned, &mut self.assign_scanned);
+
+        scanned.clear();
+        scan.push(pid);
 
         while let Some(process) = scan.pop() {
             scanned.push(process);
@@ -159,8 +174,8 @@ impl<'owner> Service<'owner> {
             tasks.push(process);
         }
 
-        for pid in tasks {
-            if self.process_map.get_pid(&self.owner, pid).is_none() {
+        for pid in tasks.drain(..) {
+            if self.process_map.get_pid(pid).is_none() {
                 let Some(parent_pid) = process::parent_id(buffer, pid) else {
                     continue
                 };
@@ -174,6 +189,10 @@ impl<'owner> Service<'owner> {
                 self.assign_new_process(buffer, pid, parent_pid, name, cmdline);
             }
         }
+
+        std::mem::swap(&mut tasks, &mut self.assign_tasks);
+        std::mem::swap(&mut scan, &mut self.assign_scan);
+        std::mem::swap(&mut scanned, &mut self.assign_scanned);
     }
 
     /// Assign a priority to a newly-created process, and record that process in the map.
@@ -185,7 +204,7 @@ impl<'owner> Service<'owner> {
         name: String,
         mut cmdline: String,
     ) {
-        let parent = self.process_map.get_pid(&self.owner, parent_pid).cloned();
+        let parent = self.process_map.get_pid(parent_pid).cloned();
 
         let mut cgroup = String::new();
 
@@ -269,11 +288,15 @@ impl<'owner> Service<'owner> {
     }
 
     pub fn cfs_apply(&self, config: &crate::config::cfs::Profile) {
+        let Some(paths) = &self.cfs_paths else {
+            return;
+        };
+
         if !self.config.cfs_profiles.enable {
             return;
         }
 
-        crate::cfs::tweak(&self.cfs_paths, config);
+        crate::cfs::tweak(paths, config);
     }
 
     pub fn cfs_on_battery(&self, on_battery: bool) {
@@ -298,10 +321,54 @@ impl<'owner> Service<'owner> {
             .unwrap_or(&crate::config::cfs::PROFILE_RESPONSIVE)
     }
 
+    /// Periodically shrinks buffers and removes dead processes to keep total memory consumption low.
+    pub fn garbage_clean(&mut self, buffer: &mut Buffer) {
+        if self.gc_counter < 2048 {
+            self.gc_counter += 1;
+            return;
+        }
+
+        self.gc_counter = 0;
+
+        buffer.shrink();
+
+        let Ok(procfs) = std::fs::read_dir("/proc/") else {
+            tracing::error!("failed to read /proc directory: process monitoring stopped");
+            return;
+        };
+
+        self.process_map.drain_filter_prepare();
+
+        for proc_entry in procfs.filter_map(Result::ok) {
+            let file_name = proc_entry.file_name();
+
+            let mut process = Process::default();
+
+            match atoi::atoi::<u32>(file_name.as_bytes()) {
+                Some(pid) => process.id = pid,
+                None => continue,
+            }
+
+            // Processes without a command line path are kernel threads
+            if process::cmdline(buffer, process.id).is_none() {
+                continue;
+            }
+
+            if let Some(ppid) = process::parent_id(buffer, process.id) {
+                process.parent_id = ppid;
+            }
+
+            self.process_map.retain_process_tree(&self.owner, &process);
+            self.process_map_insert(process);
+        }
+
+        self.process_map.drain_filter(&self.owner);
+    }
+
     /// Gets the config-assigned priority of a process.
     #[must_use]
     pub fn process_assignment(&self, pid: u32) -> Priority {
-        let Some(process) = self.process_map.get_pid(&self.owner, pid) else {
+        let Some(process) = self.process_map.get_pid(pid) else {
             return Priority::NotAssignable;
         };
 
@@ -437,14 +504,14 @@ impl<'owner> Service<'owner> {
         }
 
         for (pid, ppid) in parents {
-            if let Some(process) = self.process_map.get_pid(&self.owner, pid) {
-                if let Some(parent) = self.process_map.get_pid(&self.owner, ppid) {
+            if let Some(process) = self.process_map.get_pid(pid) {
+                if let Some(parent) = self.process_map.get_pid(ppid) {
                     process.rw(&mut self.owner).parent = Some(Arc::downgrade(parent));
                 }
             }
         }
 
-        self.process_map.drain_filter();
+        self.process_map.drain_filter(&self.owner);
 
         // Refresh priority assignments
         let mut process_map = process::Map::default();
@@ -508,7 +575,7 @@ impl<'owner> Service<'owner> {
 
         if let Some(pipewire) = self.config.process_scheduler.pipewire.clone() {
             if !self.pipewire_processes.contains(&process) {
-                if let Some(process) = self.process_map.get_pid(&self.owner, process) {
+                if let Some(process) = self.process_map.get_pid(process) {
                     let process = process.ro(&self.owner);
                     if OwnedPriority::Assignable != process.assigned_priority {
                         return;

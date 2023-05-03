@@ -74,6 +74,7 @@ async fn pipewire_service(tx: Sender<ProcessEvent>) {
                 SocketEvent::Add(socket) => {
                     if !active_sessions.contains(&socket) {
                         if let Ok(stream) = UnixStream::connect(&socket) {
+                            active_sessions.insert(socket.clone());
                             let tx = tx.clone();
                             let pw_tx = pw_tx.clone();
                             std::thread::spawn(move || {
@@ -106,7 +107,15 @@ pub(crate) async fn monitor(tx: Sender<Event>) {
     loop {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let result = std::process::Command::new("system76-scheduler")
+        let exe_link_target = std::fs::read_link("/proc/self/exe");
+        let Ok(exe) = exe_link_target else {
+            tracing::error!("failed to determine the daemon exe name: {:?}", exe_link_target.err());
+            break;
+        };
+
+        tracing::debug!("connected to pipewire");
+
+        let result = std::process::Command::new(exe)
             .arg("pipewire")
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -114,15 +123,18 @@ pub(crate) async fn monitor(tx: Sender<Event>) {
             .spawn();
 
         let Ok(mut child) = result else {
-            continue;
+            tracing::error!("failed to spawn pipewire watcher: {:?}", result.err());
+            break;
         };
 
         let Some(stdout) = child.stdout.take() else {
-            continue;
+            tracing::error!("pipewire process is missing the stdout pipe");
+            break;
         };
 
         let Ok(stdout) = tokio::process::ChildStdout::from_std(stdout) else {
-            continue;
+            tracing::error!("failed to create tokio stdout from pipewire process");
+            break;
         };
 
         let mut stdout = tokio::io::BufReader::new(stdout);
@@ -142,11 +154,13 @@ pub(crate) async fn monitor(tx: Sender<Event>) {
                         if !managed.insert(pid) {
                             continue;
                         }
+                        tracing::debug!("{pid} started using pipewire");
                     }
                     ProcessEvent::Remove(pid) => {
                         if !managed.remove(&pid) {
                             continue;
                         }
+                        tracing::debug!("{pid} stopped using pipewire");
                     }
                 }
 
@@ -154,4 +168,6 @@ pub(crate) async fn monitor(tx: Sender<Event>) {
             }
         }
     }
+
+    tracing::info!("stopped listening to pipewire");
 }

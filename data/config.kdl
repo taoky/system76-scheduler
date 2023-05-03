@@ -77,6 +77,7 @@ process-scheduler enable=true {
         include descends="ionice"
         include descends="nice"
         include descends="taskset"
+        include descends="schedtool"
         chrt
         dbus
         dbus-broker
@@ -86,5 +87,6 @@ process-scheduler enable=true {
         rtkit-daemon
         systemd
         taskset
+        schedtool
     }
 }
