@@ -351,7 +351,8 @@ fn integrate_execsnoop(tx: Sender<Event>) {
         match execsnoop::watch() {
             Ok(mut watcher) => {
                 // Listen for spawned process, scheduling them to be handled with a delay of 1 second after creation.
-                // The delay is to ensure that a process has been added to a cgroup
+                // Compared with upstream version, the 2s delay is removed (I believe that it is unnecessary)
+                // At least, well, programs with sanity should put their children inside cgroup BEFORE exec, isn't it?
                 while let Some(process) = watcher.next() {
                     let Ok(cmdline) = std::str::from_utf8(process.cmd) else {
                         continue
@@ -364,15 +365,14 @@ fn integrate_execsnoop(tx: Sender<Event>) {
                         process.pid,
                         process.parent_pid
                     );
-                    let _res = scheduled_tx.send((
-                        Instant::now() + Duration::from_secs(2),
+                    let _res = scheduled_tx.send(
                         ExecCreate {
                             pid: process.pid,
                             parent_pid: process.parent_pid,
                             name: name.to_owned(),
                             cmdline: cmdline.to_owned(),
-                        },
-                    ));
+                        }
+                    );
                 }
             }
             Err(error) => {
@@ -382,8 +382,7 @@ fn integrate_execsnoop(tx: Sender<Event>) {
     });
 
     tokio::task::spawn_local(async move {
-        while let Some((delay, process)) = scheduled_rx.recv().await {
-            tokio::time::sleep_until(delay.into()).await;
+        while let Some(process) = scheduled_rx.recv().await {
             let _res = tx.send(Event::ExecCreate(process)).await;
         }
     });
