@@ -52,6 +52,7 @@
 2. Update rust-toolchain version to 1.69.0: my local env uses sparse registry and only latest toolchain supports this.
 3. Add "/user.slice/*/session.slice/dbus.service" to session service exclusion, as some GNOME graphical apps (e.g. nautilus, eog) are started in this service.
 4. Remove the 2s delay when transmitting execsnoop's output to receiver. This delay, I believe that, is unnecessary and might make the scheduler less responsive to scenrios when a lot of CPU-intensive tasks are started in a short time.
+5. Add "affinity" properity to config.
 ---
 
 Scheduling service which optimizes Linux's CPU scheduler and automatically assigns process priorities for improved desktop responsiveness. Low latency CPU scheduling will be activated automatically when on AC, and the default scheduling latencies set on battery. Processes are regularly sweeped and assigned process priorities based on configuration files. When combined with [pop-shell](https://github.com/pop-os/shell/), foreground processes and their sub-processes will be given higher process priority.
