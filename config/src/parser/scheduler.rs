@@ -217,6 +217,7 @@ impl Profile {
                 "io" => self.parse_io(entry),
                 "nice" => self.parse_nice(entry),
                 "sched" => self.parse_sched(entry),
+                "affinity" => self.parse_affinity(entry),
                 _ => return true,
             }
 
@@ -294,5 +295,42 @@ impl Profile {
         };
 
         self.sched_policy = policy;
+    }
+
+    /// Parses the `affinity` property
+    #[tracing::instrument(skip_all)]
+    pub fn parse_affinity(&mut self, entry: &KdlEntry) {
+        if let Some(affinity) = entry.value().as_string() {
+            // Parse affinity string
+            let mut result = 0;
+            for item in affinity.split(',') {
+                // Does it contain '-'?
+                if let Some((start, end)) = item.find('-').map(|index| (&item[..index], &item[index + 1..])) {
+                    // Parse start and end
+                    let Ok(start) = start.parse::<usize>() else {
+                        tracing::error!("invalid affinity start: {}", start);
+                        return;
+                    };
+                    let Ok(end) = end.parse::<usize>() else {
+                        tracing::error!("invalid affinity end: {}", end);
+                        return;
+                    };
+
+                    for item in start..=end {
+                        result |= 1 << item;
+                    }
+                } else {
+                    // Parse item
+                    let Ok(item) = item.parse::<usize>() else {
+                        tracing::error!("invalid affinity item: {}", item);
+                        return;
+                    };
+
+                    // Push item
+                    result |= 1 << item;
+                }
+            }
+            self.affinity = Some(result);
+        }
     }
 }

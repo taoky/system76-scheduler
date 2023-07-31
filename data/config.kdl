@@ -68,7 +68,7 @@ process-scheduler enable=true {
         package-manager nice=15 sched="batch" io="idle"
 
         // CPU-intense background tasks
-        batch nice=19 sched="idle" io="idle"
+        batch nice=19 sched="idle" io="idle" affinity="6-15"
     }
 
     exceptions {

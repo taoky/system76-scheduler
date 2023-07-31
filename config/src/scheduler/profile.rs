@@ -19,6 +19,8 @@ pub struct Profile {
     pub sched_policy: SchedPolicy,
     /// Scheduler policy priority
     pub sched_priority: SchedPriority,
+    /// CPU affinity
+    pub affinity: Option<u128>,
 }
 
 impl Profile {
@@ -30,6 +32,7 @@ impl Profile {
             io: ioprio::Class::BestEffort(ioprio::BePriorityLevel::lowest()),
             sched_policy: SchedPolicy::Other,
             sched_priority: SchedPriority(1),
+            affinity: None,
         }
     }
 }

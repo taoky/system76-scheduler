@@ -33,6 +33,17 @@ pub fn set(buffer: &mut Buffer, process: u32, profile: &Profile) {
             }
         }
 
+        if let Some(affinity) = profile.affinity {
+            #[allow(clippy::cast_possible_wrap)]
+            unsafe {
+                libc::sched_setaffinity(
+                    process as libc::pid_t,
+                    std::mem::size_of_val(&affinity),
+                    std::ptr::addr_of!(affinity).cast::<libc::cpu_set_t>(),
+                );
+            }
+        }
+
         set_policy(process, profile.sched_policy, profile.sched_priority);
 
         #[allow(clippy::cast_possible_wrap)]
@@ -45,7 +56,13 @@ pub fn set(buffer: &mut Buffer, process: u32, profile: &Profile) {
 
 pub fn set_policy(pid: u32, policy: SchedPolicy, sched_priority: SchedPriority) {
     let param = libc::sched_param {
-        sched_priority: libc::c_int::from(sched_priority.get()),
+        sched_priority: libc::c_int::from({
+            if policy.is_realtime() {
+                sched_priority.get()
+            } else {
+                0
+            }
+        }),
     };
 
     unsafe {
