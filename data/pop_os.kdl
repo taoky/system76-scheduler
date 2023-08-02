@@ -68,7 +68,7 @@ assignments {
 		cpp
 		FAHClient
 		FAHCoreWrapper
-		fossilize-replay
+		fossilize_replay
 		g++
 		gcc
 		gradle
