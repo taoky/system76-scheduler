@@ -3,7 +3,7 @@
 
 _pkgname=system76-scheduler
 pkgname=${_pkgname}-taoky
-pkgver=r120.0f83520
+pkgver=r144.c1cc2dd
 pkgrel=1
 pkgdesc='system76 userspace scheduler, forked to workaround some bugs'
 arch=(x86_64)
@@ -27,8 +27,8 @@ pkgver() {
 
 build() {
 #   cd ${_pkgname}-${pkgver}
-  export EXECSNOOP_PATH=/usr/share/bcc/tools/execsnoop
-  just execsnoop=/usr/share/bcc/tools/execsnoop build-release
+  export EXECSNOOP_PATH=/usr/bin/execsnoop-scheduler
+  just execsnoop=/usr/bin/execsnoop-scheduler build-release
 }
 
 package() {

@@ -59,6 +59,7 @@ install:
     install -Dm0755 target/release/{{binary}} {{target-bin}}
     install -Dm0644 data/{{id}}.service {{libdir}}/systemd/system/{{id}}.service
     install -Dm0644 data/{{id}}.conf {{confdir}}/dbus-1/system.d/{{id}}.conf
+    install -Dm0755 execsnoop/bcc/execsnoop {{bindir}}/execsnoop-scheduler
 
 # Uninstalls everything (requires same arguments as given to install)
 uninstall:
